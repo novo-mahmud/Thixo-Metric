@@ -6,6 +6,14 @@
 
 ---
 
+## System Preview
+
+![Thixo-Metric Dashboard](dashboard_preview.png)
+
+*Figure: Interactive dashboard showing Recovery Curves, Sensitivity Analysis, and Spatial Risk Profiles.*
+
+---
+
 ## Features
 
 *   **Interactive Dashboard:** Real-time visualization of Factor of Safety (FoS), Recovery Curves, and Spatial Risk Profiles.
@@ -23,7 +31,7 @@
 
 This tool is designed to run seamlessly in **Google Colab**. 
 
-1.  Click the "Open in Colab" button below (or upload the `.ipynb` file manually).
+1.  Click on "Open in Colab" button below (or upload the `.ipynb` file manually).
 2.  Ensure the following libraries are installed (they are pre-installed in Colab):
     ```bash
     pip install pandas numpy matplotlib seaborn ipywidgets fpdf openpyxl
@@ -78,6 +86,19 @@ The system utilizes the following log-linear recovery model to predict undrained
 3.  **Review:** Adjust the "Days Since Disturbance" slider to visualize recovery progress.
 4.  **Generate:** Click "Generate Technical Report" to create the PDF bundle.
 5.  **Download:** Download the PDF, CSV data, or individual graphs for your report.
+
+---
+
+## Roadmap & Updates
+
+### Current Release
+*   **Version:** v1.0.0
+*   **Status:** Official Launch
+*   **Details:** Includes PDF reporting, Sensitivity Analysis, and Interactive Dashboard.
+*   See the [Official Release Page](../../releases) for the asset bundle.
+
+### Feedback & Issues
+If you encounter bugs, have feature requests, or find data discrepancies, please create an **[Issue](../../issues)**. We use the Issues tab to track development priorities and engage with the community.
 
 ---
 
