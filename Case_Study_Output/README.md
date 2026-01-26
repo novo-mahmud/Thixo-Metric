@@ -60,7 +60,7 @@ This is the raw field data source containing 50 borehole samples from the river 
 
 ## Usage of These Files
 
-*   **Researchers:** Refer to the `Technical_Discussion_Report.pdf` for methodology and discussion.
+*   **Researchers:** Refer to the `Thixo-Metric_Report.pdf` for methodology and discussion.
 *   **Engineers:** Use the `Dashboard.png` for presentations or stakeholder meetings.
 *   **Analysts:** Use the `Data.csv` for further statistical analysis or GIS integration (e.g., importing into QGIS).
 
