@@ -23,7 +23,7 @@ This is the raw field data source containing 50 borehole samples from the river 
 ## 2. Analysis Output Files
 
 ### A. Technical Discussion Report
-**File:** `Technical_Discussion_Report.pdf`
+**File:** `Thixo-Metric_Report.pdf`
 
 **Description:** A comprehensive PDF report detailing the quantitative stability analysis derived from the input data.
 
