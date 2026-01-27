@@ -1,5 +1,6 @@
 # ==========================================
-# Thixo-Metric App.py (CRITICAL BUG FIX)
+# Thixo-Metric App.py (Optimized for Stability)
+# Includes: Welcome Message, Plot Download, & Robust PDF Handling
 # ==========================================
 
 import streamlit as st
@@ -8,8 +9,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import io
-import os
 import tempfile
+import traceback # For debugging the 502 error if needed
 
 # PDF Library
 try:
@@ -156,21 +157,38 @@ if 'df_soil' not in st.session_state:
 if 'analysis_run' not in st.session_state:
     st.session_state['analysis_run'] = False
 
-# --- Sidebar ---
+# --- 1. NEW: Welcome Message & Brief Explanation ---
 st.sidebar.title("⚙️ Thixo-Metric Setup")
 
+st.sidebar.info("""
+**Welcome to Thixo-Metric!**  
+
+This tool performs quantitative geotechnical stability analysis for riverbank recovery.
+
+**How to Use:**
+1.  Upload your borehole data (CSV).
+2.  Click **"Run Analysis"** to calculate metrics.
+3.  View the interactive dashboard.
+4.  Download results or generate technical reports.
+""")
+
+st.sidebar.markdown("---")
+
+# --- Sidebar Inputs ---
+
 # 1. File Upload
-uploaded_file = st.sidebar.file_uploader("Upload CSV", type=['csv'])
+uploaded_file = st.sidebar.file_uploader("📂 Upload CSV", type=['csv'])
 
 # 2. Parameters
 days = st.sidebar.slider("Days Since Disturbance", 0, 120, value=0)
 target_fos = st.sidebar.slider("Target Safety Factor (FoS)", 1.0, 3.0, value=1.5, step=0.1)
 
-# 3. Buttons
+# 3. Buttons (Separated)
 btn_run = st.sidebar.button("🚀 Run Analysis")
 btn_gen_report = st.sidebar.button("📄 Generate Technical Report")
+btn_download_plot = st.sidebar.button("🖼️ Download Dashboard (PNG)")
 
-# --- 4. Load Data ---
+# --- Load Data ---
 if uploaded_file is not None:
     try:
         df_new = pd.read_csv(uploaded_file)
@@ -186,7 +204,7 @@ if uploaded_file is not None:
         st.sidebar.error(f"Error: {e}")
 
 if st.session_state['df_soil'] is None:
-    # Synthetic Data Fallback
+    # Synthetic Data
     np.random.seed(42) 
     data = {
         'Sample_ID': [f'BH-{i:03d}' for i in range(1, 11)],
@@ -204,30 +222,44 @@ if st.session_state['df_soil'] is None:
     st.session_state['df_soil'] = df_soil
     st.sidebar.info("Using Synthetic Demo Data")
 
-# --- 5. Run Analysis Logic ---
+# --- Run Analysis Logic ---
 if btn_run or st.session_state['analysis_run']:
     df_soil = st.session_state['df_soil']
     model = RiverbankSoil(df_soil)
-    
-    # 1. Calculations
-    fail_rate, hyd_lag, crit_soil = model.calculate_strategic_metrics(days, target_fos)
-    wait_days = model.calculate_wait_time(target_fos)
     
     df_compare = model.run_sensitivity_comparison(days)
     df_results = model.calculate_strength_at_t(days, "Baseline")
     df_display = df_soil.merge(df_results, on='Sample_ID')
     df_display['Status'] = df_display['FoS'].apply(lambda x: 'SAFE' if x >= target_fos else 'CRITICAL')
     
-    # 2. Depth Warning
-    deep_critical = df_display[(df_display['Depth_m'] > 15) & (df_display['Status'] == 'CRITICAL')]
-    depth_warning_text = ""
-    if not deep_critical.empty:
-        depth_warning_text = f"{len(deep_critical)} critical samples detected below 15m. Structural reinforcement is required."
+    # KPIs
+    fail_rate, hyd_lag, crit_soil = model.calculate_strategic_metrics(days, target_fos)
+    wait_days = model.calculate_wait_time(target_fos)
     
-    # 3. Dashboard
+    # State Management
+    st.session_state['df_compare'] = df_compare
+    st.session_state['df_display'] = df_display
+    st.session_state['fail_rate'] = fail_rate
+    st.session_state['hyd_lag'] = hyd_lag
+    st.session_state['wait_days'] = wait_days
+    st.session_state['crit_soil'] = crit_soil
+    st.session_state['analysis_run'] = True
+    
+    # Dashboard
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric(label="Failure Rate", value=f"{fail_rate:.1f}%")
+    with c2:
+        st.metric(label="Avg. Hydraulic Lag", value=f"{hyd_lag} Days")
+    with c3:
+        st.metric(label="Critical Profile", value=f"{crit_soil}")
+    with c4:
+        st.metric(label="Wait-Time", value=f"{wait_days} Days")
+    
+    # Plotting
     current_plot = plt.figure(figsize=(20, 10))
+    st.session_state['current_plot_obj'] = current_plot
     
-    # --- FIX: REMOVED THE "st =" ASSIGNMENT ---
     current_plot.suptitle(f"Thixo-Metric Analysis (t={days} days)", fontsize=16, fontweight='bold', y=1.02)
     
     # Plot 1: Recovery Curves
@@ -287,40 +319,43 @@ if btn_run or st.session_state['analysis_run']:
     ax6.text(0.1, 0.5, wait_text, fontsize=12, verticalalignment='center', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
     plt.tight_layout()
-    
-    # 4. Display in Streamlit
     st.pyplot(current_plot)
     st.success("Analysis Completed!")
     
-    # 5. Save State
-    st.session_state['df_compare'] = df_compare
-    st.session_state['df_display'] = df_display
-    st.session_state['fail_rate'] = fail_rate
-    st.session_state['hyd_lag'] = hyd_lag
-    st.session_state['wait_days'] = wait_days
-    st.session_state['crit_soil'] = crit_soil
-    st.session_state['depth_warning'] = depth_warning_text
-    st.session_state['current_plot_obj'] = current_plot
-    st.session_state['analysis_run'] = True
-
-    # 6. Download Data
+    # Download Data
     st.download_button("Download Analyzed CSV", data=df_compare.to_csv(index=False).encode('utf-8'), file_name='Thixo_Metric_Data.csv', mime='text/csv')
 
-# --- 6. PDF Generation Logic ---
+# --- Download Dashboard Button (NEW) ---
+if btn_download_plot:
+    if st.session_state.get('analysis_run') and st.session_state.get('current_plot_obj'):
+        # Save plot to temp file
+        buf = io.BytesIO()
+        st.session_state['current_plot_obj'].savefig(buf, format='png')
+        st.download_button(
+            label="Download Dashboard (High Res PNG)",
+            data=buf.getvalue(),
+            file_name='Thixo_Metric_Dashboard.png',
+            mime="image/png"
+        )
+    else:
+        st.warning("Please run analysis first to generate the plot.")
+
+# --- PDF Generation (FIXED WITH TRY/EXCEPT) ---
 if btn_gen_report:
     if not st.session_state.get('analysis_run'):
         st.warning("Please run analysis first.")
     else:
         with st.spinner("Generating PDF Report..."):
-            # Save plot image
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-                st.session_state['current_plot_obj'].savefig(tmp.name, dpi=300, bbox_inches='tight', facecolor='white')
+            try:
+                # 1. Save Plot
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                    st.session_state['current_plot_obj'].savefig(tmp.name, dpi=300, bbox_inches='tight', facecolor='white')
                 
-                # Generate PDF
+                # 2. Generate PDF Content
                 pdf = PDF()
                 pdf.add_page()
                 
-                # Executive Summary
+                # 1. Executive Summary
                 pdf.chapter_title(1, "Executive Summary")
                 summary = (f"Analysis was performed at t={days} days since disturbance.\n"
                            f"The current Reach Failure Rate is {st.session_state['fail_rate']:.1f}%.\n"
@@ -328,7 +363,7 @@ if btn_gen_report:
                            f"Based on a 95% confidence interval, construction must wait until Day {st.session_state['wait_days']}.")
                 pdf.chapter_body(summary)
                 
-                # High Risk
+                # 2. High-Risk Identification
                 pdf.chapter_title(2, "High-Risk Borehole Identification")
                 critical_df = st.session_state['df_display'].nsmallest(5, 'FoS')
                 table_headers = ['Sample ID', 'FoS', 'Status', 'Soil Type']
@@ -337,40 +372,34 @@ if btn_gen_report:
                     table_data.append([row['Sample_ID'], row['FoS'], row['Status'], row['Soil_Type']])
                 pdf.add_table(table_headers, table_data)
                 pdf.ln(5)
-                pdf.chapter_body("The table above lists the 5 most critical samples requiring immediate monitoring.")
+                pdf.chapter_body("The table above lists 5 most critical samples requiring immediate monitoring.")
                 
-                # Vulnerability
+                # 3. Soil Type Vulnerability
                 pdf.chapter_title(3, "Soil Classification Vulnerability")
                 ch_fos = st.session_state['df_display'][st.session_state['df_display']['Soil_Type']=='CH']['FoS'].mean()
                 cl_fos = st.session_state['df_display'][st.session_state['df_display']['Soil_Type']=='CL']['FoS'].mean()
                 vuln_text = ""
                 if ch_fos < cl_fos:
-                    vuln_text = "CH (High Plasticity) soils are recovering slower than CL soils. This is likely due to higher Liquidity Index values."
+                    vuln_text = f"CH (High Plasticity) soils are recovering slower than CL soils."
                 else:
-                    vuln_text = "CL (Low Plasticity) soils are underperforming. This suggests external factors are inhibiting recovery."
+                    vuln_text = f"CL (Low Plasticity) soils are underperforming."
                 pdf.chapter_body(vuln_text)
                 
-                # Visuals
+                # 4. Visual Integration
                 pdf.chapter_title(4, "Visual Dashboard Analysis")
                 pdf.chapter_body("The dashboard (below) visualizes time-dependent recovery and sensitivity to flooding.")
                 pdf.ln(2)
                 pdf.image(tmp.name, x=10, y=None, w=180)
                 pdf.ln(10)
-                pdf.chapter_body("Visual Analysis: The 'Flood' KDE plot shows a distinct leftward shift compared to 'Baseline' plot.")
+                pdf.chapter_body("Visual Analysis: The 'Flood' KDE plot shows a distinct leftward shift.")
                 
-                # Strategy
+                # 5. Strategic Decision
                 pdf.chapter_title(5, "Strategic Decision Support")
                 decision_text = (f"Recommendation: Do not commence construction before Day {st.session_state['wait_days']}.\n"
-                                 f"This ensures that 95% of the borehole reach maintains stability above the target FoS of {target_fos}.")
+                                 f"This ensures that 95% of the borehole reach maintains stability above target FoS of {target_fos}.")
                 pdf.chapter_body(decision_text)
                 
-                if st.session_state['depth_warning']:
-                    pdf.set_font('Arial', 'BI', 10)
-                    pdf.set_text_color(200, 0, 0)
-                    pdf.multi_cell(0, 6, f"DEPTH WARNING: {st.session_state['depth_warning']}")
-                    pdf.set_text_color(0, 0, 0)
-                
-                # Assumptions
+                # 6. Assumptions
                 pdf.add_page()
                 pdf.chapter_title(6, "Assumptions & Limitations")
                 tech_text = ("- Driving Stress: Calculated as depth * unit weight (1D approximation).\n"
@@ -379,12 +408,20 @@ if btn_gen_report:
                             "- Chemical cementation and aging effects are not considered.")
                 pdf.chapter_body(tech_text)
                 
+                # Output
                 pdf_output = pdf.output(dest='S').encode('latin-1')
 
-        st.download_button(
-            label="Download Technical Report (PDF)",
-            data=pdf_output,
-            file_name='Thixo_Metric_Report.pdf',
-            mime="application/pdf"
-        )
-        st.success("Report Generated Successfully!")
+                # 3. Trigger Download
+                st.download_button(
+                    label="Download Technical Report (PDF)",
+                    data=pdf_output,
+                    file_name='Thixo_Metric_Report.pdf',
+                    mime="application/pdf"
+                )
+                st.success("Report Generated Successfully!")
+
+            except Exception as e:
+                # CATCH THE ERROR
+                st.error(f"**PDF Generation Failed:** {e}")
+                st.warning("The report generation likely timed out due to the complexity of the charts.")
+                st.info("Solution: Please download the **Dashboard (PNG)** using the button below for your presentation.")
