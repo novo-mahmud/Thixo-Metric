@@ -1,5 +1,5 @@
 # ==========================================
-# Thixo-Metric Web App (Fixed & Complete)
+# Thixo-Metric Web App (Final Fixed Version)
 # ==========================================
 
 import streamlit as st
@@ -10,17 +10,20 @@ import seaborn as sns
 from fpdf import FPDF
 import io
 
-# --- Page Configuration (Must be first) ---
+# Set visual style
+sns.set_theme(style='whitegrid')
+plt.rcParams['font.family'] = 'sans-serif'
+
+# --- Page Configuration ---
 st.set_page_config(
     page_title="Thixo-Metric",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- Session State Management ---
-# Initialize if not exists
+# --- Session State Initialization ---
+# Initialize if not exist
 if 'df_soil' not in st.session_state:
-    # Load synthetic data initially
     np.random.seed(42) 
     data = {
         'Sample_ID': [f'BH-{i:03d}' for i in range(1, 11)],
@@ -39,9 +42,10 @@ if 'df_soil' not in st.session_state:
     st.session_state.df_soil = df
     st.session_state.current_data_source = "Synthetic Demo Data"
 
-# Initialize run state
 if 'analysis_run' not in st.session_state:
     st.session_state.analysis_run = False
+if 'pdf_bytes' not in st.session_state:
+    st.session_state.pdf_bytes = None
 
 # ==========================================
 # 2. Computational Logic
@@ -126,7 +130,7 @@ class RiverbankSoil:
         return "Not Achievable"
 
 # ==========================================
-# 3. PDF Logic (Same as Colab)
+# 3. PDF Logic
 # ==========================================
 
 class PDF(FPDF):
@@ -150,9 +154,14 @@ class PDF(FPDF):
         self.ln()
 
 # ==========================================
-# 4. The Streamlit Interface
+# 4. Main Execution & State Management
 # ==========================================
 
+# --- GLOBAL INITIALIZATION (FIXED) ---
+# This line MUST exist at Global Scope to prevent NameError
+soil_model = RiverbankSoil(st.session_state.df_soil)
+
+# --- Sidebar ---
 with st.sidebar:
     st.header("Thixo-Metric v1.0")
     st.subheader("Input Data & Controls")
@@ -168,12 +177,16 @@ with st.sidebar:
                 
             required_cols = ['Sample_ID', 'Depth_m', 'Undisturbed_Su', 'Remolded_Su_S0', 'PI', 'Water_Content', 'Liquid_Limit_LL', 'is_submerged']
             if any(col not in df_new.columns for col in required_cols): 
-                st.error("Upload Failed: Missing columns"); st.stop()
+                st.error("Upload Failed: Missing required columns."); st.stop()
                 
             if 'Soil_Type' not in df_new.columns: df_new['Soil_Type'] = df_new['PI'].apply(lambda x: 'CH' if x > 35 else 'CL')
                 
             st.session_state.df_soil = df_new
-            soil_model.df = df_new # Update model instance
+            
+            # Update global soil_model instance immediately so main page can use it
+            global soil_model
+            soil_model = RiverbankSoil(df_new)
+            
             st.session_state.current_data_source = filename
             st.success(f"Uploaded successfully: {filename}")
         except Exception as e:
@@ -193,19 +206,24 @@ with st.sidebar:
     
     st.divider()
     st.write("Direct Downloads")
-    st.download_button("Download CSV Data", data=st.session_state.df_soil.to_csv(index=False).encode('utf-8'), file_name="Thixo-Metric_Data.csv", mime="text/csv")
+    
+    # Use session_state data for download if available
+    if 'df_compare' in st.session_state:
+        csv_data = st.session_state.df_compare.to_csv(index=False).encode('utf-8')
+        st.download_button("Download CSV Data", data=csv_data, file_name="Thixo-Metric_Data.csv", mime="text/csv")
+    else:
+        st.write("Run analysis first to enable CSV download.")
 
-# Initialize Model with Session Data
-soil_model = RiverbankSoil(st.session_state.df_soil)
-
-# Main Page
+# --- Main Page ---
 st.title("Dashboard & Analysis")
 st.caption(f"Current Data Source: {st.session_state.current_data_source}")
 
 # 1. Analysis Logic
 if run_btn:
     with st.spinner("Analyzing... Please wait."):
-        soil_model.df = st.session_state.df_soil # Ensure model uses current data
+        # Ensure we are using the current session data
+        soil_model.df = st.session_state.df_soil
+        
         fail_rate, hyd_lag, crit_soil = soil_model.calculate_strategic_metrics(days, target_fos)
         wait_days = soil_model.calculate_wait_time(target_fos)
         
@@ -234,7 +252,7 @@ if st.session_state.analysis_run:
     with kpi3: st.metric("Critical Profile", f"{st.session_state.crit_soil}")
     with kpi4: st.metric("Wait-Time", f"{st.session_state.wait_days} Days")
     
-    # Plotting (The Missing Logic Filled In)
+    # Plotting
     fig = plt.figure(figsize=(20, 10))
     st = fig.suptitle(f"Thixo-Metric: Quantitative Stability Analysis (t={days} days)", fontsize=16, fontweight='bold', y=1.02)
     
@@ -295,9 +313,8 @@ if st.session_state.analysis_run:
     ax6.text(0.1, 0.5, wait_text, fontsize=12, verticalalignment='center', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
     plt.tight_layout()
-    
     st.pyplot(fig)
-
+    
     # Data Preview
     with st.expander("Raw Data Preview"):
         st.dataframe(st.session_state.df_display.head(5))
@@ -305,7 +322,12 @@ if st.session_state.analysis_run:
 # 3. Generate Report
 if gen_report_btn:
     with st.spinner("Generating Technical Report..."):
-        # 1. Generate PDF
+        # Save plot to buffer
+        img_buffer = io.BytesIO()
+        fig.savefig(img_buffer, format='png')
+        img_bytes = img_buffer.getvalue()
+        
+        # Generate PDF
         pdf = PDF()
         pdf.add_page()
         pdf.chapter_title(1, "Executive Summary")
@@ -314,8 +336,15 @@ if gen_report_btn:
                    f"Submerged samples experience an average Hydraulic Lag of {st.session_state.hyd_lag} days.\n"
                    f"Based on a 95% confidence interval, construction must wait until Day {st.session_state.wait_days}.")
         pdf.chapter_body(summary)
-        # (Add more PDF chapters as needed...)
-        pdf_content = pdf.output(dest='S').encode('latin-1')
         
-        st.success("Technical Report Generated Successfully.")
-        st.download_button("Download Technical Report", data=pdf_content, file_name="Thixo-Metric_Report.pdf", mime="application/pdf")
+        # (Add more chapters...)
+        pdf.chapter_title(2, "Methodology")
+        pdf.chapter_body("Generated by Thixo-Metric Web App.")
+        
+        st.session_state.pdf_bytes = pdf.output(dest='S').encode('latin-1')
+        
+    st.success("Technical Report Generated Successfully.")
+    
+    # Show download button only if PDF is ready
+    if st.session_state.pdf_bytes is not None:
+        st.download_button("Download Technical Report", data=st.session_state.pdf_bytes, file_name="Thixo-Metric_Report.pdf", mime="application/pdf")
