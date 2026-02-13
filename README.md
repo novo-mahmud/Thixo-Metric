@@ -4,7 +4,7 @@
 
 **Thixo-Metric** is an automated decision-support tool designed for the analysis of thixotropic strength recovery in remolded riverbank clays. It is specifically tailored for the Bangladesh Delta, providing engineers and researchers with data-driven "Wait-Time" analysis for safe post-disturbance construction.
 
-*Visit the link to directly access the web app: [Live App](https://thixo-metric-web.onrender.com/)*
+### *Visit the link to directly access the web app: [Live App](https://thixo-metric-web.onrender.com/)*
 
 ---
 
